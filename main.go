@@ -15,32 +15,33 @@ import (
 )
 
 var outgoingLinks [][]uint32
+var lengths []int
 
 const MAX_VAL = 4294967295
 const MAX_DEPTH = 4
 
-func BinarySearch(a uint32, x uint32) bool {
-	start := 0
-	end := len(outgoingLinks[a]) - 1
+func SyncBinarySearch(a uint32, x uint32, start int, end int) bool {
+	neighbours := outgoingLinks[a]
+
 	for start <= end {
 		mid := (start + end) >> 1
-		if outgoingLinks[a][mid] == x {
-			return true
-		} else if outgoingLinks[a][mid] < x {
+		if neighbours[mid] < x {
 			start = mid + 1
-		} else if outgoingLinks[a][mid] > x {
+		} else if neighbours[mid] > x {
 			end = mid - 1
+		} else {
+			return true
 		}
 	}
 	return false
 }
 
 func hasNeighbour(startLink, goal uint32) bool {
-	// outgoingNeighbours := outgoingLinks[startLink]
-	return BinarySearch(startLink, goal)
+	length := lengths[startLink]
+	return SyncBinarySearch(startLink, goal, 0, length-1)
 }
 
-func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, returnCh chan<- uint32, stopCh <-chan struct{}, isClosed *abool.AtomicBool, visited map[uint32]struct{}) {
+func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, returnCh chan<- uint32, isClosed *abool.AtomicBool, visited map[uint32]struct{}) {
 	if isClosed.IsSet() {
 		return
 	}
@@ -51,11 +52,7 @@ func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, return
 	}
 
 	send := func(data uint32) {
-		select {
-		case <-stopCh:
-			return
-		case returnCh <- data:
-		}
+		returnCh <- data
 	}
 
 	if currentDepth+1 == MAX_DEPTH {
@@ -76,7 +73,7 @@ func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, return
 			return
 		}
 
-		findOutgoingLink(l, goal, currentDepth+1, returnCh, stopCh, isClosed, visited)
+		findOutgoingLink(l, goal, currentDepth+1, returnCh, isClosed, visited)
 	}
 
 	if currentDepth == 0 {
@@ -90,27 +87,30 @@ func main() {
 	bytes := file.ReadFile()
 	println("Finished reading file.")
 	outgoingLinks = file.UnmarshalMessage(bytes)
+
+	lengths = make([]int, len(outgoingLinks))
+
+	for i, val := range outgoingLinks {
+		leng := len(val)
+		lengths[i] = leng - 1
+	}
+
+	println(lengths)
+
 	println("Finished json parse.")
 
-	i := 1
+	i := 50_000
 
 	f, _ := os.Create("cpu_profile.prof")
 	pprof.StartCPUProfile(f)
 	defer pprof.StopCPUProfile()
-
-	// var wg sync.WaitGroup
-	// wg.Add(1)
-	// go func() {
-	// 	_ = http.ListenAndServe("0.0.0.0:8081", nil)
-	// 	wg.Done()
-	// }()
 
 	sem := semaphore.NewWeighted(16)
 	out := make([]int, 32)
 	ctx := context.TODO()
 
 	defer utils.Timer("0-50")()
-	for i < 25_000 {
+	for i < 100_000 {
 		for range out {
 
 			if err := sem.Acquire(ctx, 1); err != nil {
@@ -125,13 +125,10 @@ func main() {
 				visited := make(map[uint32]struct{})
 				cond := abool.New()
 				nodeCh := make(chan uint32)
-				stopCh := make(chan struct{})
-
-				go findOutgoingLink(0, uint32(i), 0, nodeCh, stopCh, cond, visited)
+				go findOutgoingLink(0, uint32(i), 0, nodeCh, cond, visited)
 
 				node := <-nodeCh
 				cond.Set()
-				close(stopCh)
 
 				if node != MAX_VAL {
 					// fmt.Printf("Found response %v -> %v \n", i, node)
@@ -144,6 +141,9 @@ func main() {
 			}(uint32(i))
 
 			i += 1
+			if i%1000 == 0 {
+				fmt.Printf("Progress: %v\n", i)
+			}
 		}
 	}
 

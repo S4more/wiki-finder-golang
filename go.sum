@@ -1,3 +1,5 @@
+github.com/alasdairforsythe/branchless v0.0.0-20230629051907-19da385d3bc2 h1:TUkZGCM8ArxNe5nwtbWFptb8HbaP+ltJOp5Xq9iCZng=
+github.com/alasdairforsythe/branchless v0.0.0-20230629051907-19da385d3bc2/go.mod h1:5ZgyxDsL9OJARQaxaKcHuwqE9QDmjL3YuvaJjrmCnx8=
 github.com/sugawarayuuta/sonnet v0.0.0-20230921120721-6f097f6a7e6d h1:Cl97vIsOboaxdXz8i4FmKCsMyF8SFJREsEwONi2VI+4=
 github.com/sugawarayuuta/sonnet v0.0.0-20230921120721-6f097f6a7e6d/go.mod h1:6M53rd6DvbzoLbFnL3bjCsDSkCYh4i2yqW04hxr1/5o=
 github.com/tevino/abool/v2 v2.1.0 h1:7w+Vf9f/5gmKT4m4qkayb33/92M+Um45F2BkHOR+L/c=

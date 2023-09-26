@@ -1,63 +1,76 @@
-package main
+package main_test
 
 import (
 	"fmt"
-	"os"
-	"runtime/pprof"
-	"slices"
-	"sync"
+	"log"
+	"math/rand"
 	"testing"
-
-	file "github.com/s4more/go-wiki/loader"
-	utils "github.com/s4more/go-wiki/utils"
+	"time"
 )
 
 func TestMain(m *testing.M) {
-	f, err := os.Create("profile.prof")
-	if err != nil {
-		panic(err)
+	fmt.Println("Hello World")
+	size := 15000
+
+	arr := make([]uint32, size)
+	for i := range arr {
+		arr[i] = uint32(rand.Intn(60_000_000))
 	}
-	defer f.Close()
 
-	// Start CPU profiling
-	if err := pprof.StartCPUProfile(f); err != nil {
-		panic(err)
-	}
-	defer pprof.StopCPUProfile()
+	goal := arr[rand.Intn(size)]
+	fmt.Printf("Goal: %v\n", goal)
 
-	defer utils.Timer("main")()
-	println("Starts reading file.")
-	bytes := file.ReadFile()
-	println("Finished reading file.")
-	outgoingLinks = file.UnmarshalMessage(bytes)
-	println("Finished json parse.")
+	ch := make(chan bool, 2)
 
-	i := 1
+	start := time.Now()
+	val := SyncBinarySearch(arr, goal, 0, size-1)
+	elapsed := time.Since(start)
+	log.Printf("Elapsed time sync: %v, %v\n", elapsed, val)
 
-	defer utils.Timer("0-50")()
-	for i < 1000 {
-		var wg sync.WaitGroup
-		isClosed = false
-		visited = make([]uint32, 100)
-		nodeCh := make(chan uint32)
-		stopCh := make(chan struct{})
+	start = time.Now()
+	go AsyncBinarySearch(arr, goal, 0, size>>1-1, ch)
+	go AsyncBinarySearch(arr, goal, size>>1, size-1, ch)
+	go AsyncBinarySearch(arr, goal, size>>1, size-1, ch)
 
-		go findOutgoingLink(0, uint32(i), 0, nodeCh, stopCh, &wg)
-
-		node := <-nodeCh
-		fmt.Printf("Received %v on path %v", node, i)
-		isClosed = true
-		close(stopCh)
-		wg.Wait()
-
-		if node != MAX_VAL {
-			fmt.Printf("Found response %v -> %v \n", i, node)
-			if !slices.Contains(outgoingLinks[node], uint32(i)) {
-				fmt.Printf("node %v does not have an outgoing link to %v", node, i)
-			}
-		} else {
-			fmt.Printf("No response.")
+	i := 0
+	found := false
+	for i < 2 {
+		val := <-ch
+		if val {
+			found = true
+			break
 		}
-		i += 1
+		i++
 	}
+	elapsed = time.Since(start)
+	log.Printf("Elapsed time: %v, %v\n", elapsed, found)
+}
+
+func SyncBinarySearch(neighbours []uint32, goal uint32, start int, end int) bool {
+
+	for start <= end {
+		mid := (start + end) >> 1
+		if neighbours[mid] == goal {
+			return true
+		} else if neighbours[mid] < goal {
+			start = mid + 1
+		} else if neighbours[mid] > goal {
+			end = mid - 1
+		}
+	}
+	return false
+}
+
+func AsyncBinarySearch(neighbours []uint32, goal uint32, start int, end int, rch chan bool) {
+	for start <= end {
+		mid := (start + end) >> 1
+		if neighbours[mid] == goal {
+			rch <- true
+		} else if neighbours[mid] < goal {
+			start = mid + 1
+		} else if neighbours[mid] > goal {
+			end = mid - 1
+		}
+	}
+	rch <- false
 }
