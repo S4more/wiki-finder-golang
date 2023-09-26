@@ -10,7 +10,6 @@ import (
 
 	file "github.com/s4more/go-wiki/loader"
 	utils "github.com/s4more/go-wiki/utils"
-	"github.com/tevino/abool/v2"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -22,7 +21,6 @@ const MAX_DEPTH = 4
 
 func SyncBinarySearch(a uint32, x uint32, start int, end int) bool {
 	neighbours := outgoingLinks[a]
-
 	for start <= end {
 		mid := (start + end) >> 1
 		if neighbours[mid] < x {
@@ -41,18 +39,10 @@ func hasNeighbour(startLink, goal uint32) bool {
 	return SyncBinarySearch(startLink, goal, 0, length-1)
 }
 
-func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, returnCh chan<- uint32, isClosed *abool.AtomicBool, visited map[uint32]struct{}) {
-	if isClosed.IsSet() {
-		return
-	}
-
+func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, visited map[uint32]struct{}) uint32 {
 	_, visitedBefore := visited[startLink]
 	if visitedBefore {
-		return
-	}
-
-	send := func(data uint32) {
-		returnCh <- data
+		return MAX_VAL
 	}
 
 	if currentDepth+1 == MAX_DEPTH {
@@ -60,25 +50,21 @@ func findOutgoingLink(startLink uint32, goal uint32, currentDepth uint32, return
 	}
 
 	if hasNeighbour(startLink, goal) {
-		send(startLink)
-		return
+		return startLink
 	}
 
 	if currentDepth == MAX_DEPTH {
-		return
+		return MAX_VAL
 	}
 
 	for _, l := range outgoingLinks[startLink] {
-		if isClosed.IsSet() {
-			return
+		val := findOutgoingLink(l, goal, currentDepth+1, visited)
+		if val != MAX_VAL {
+			return val
 		}
-
-		findOutgoingLink(l, goal, currentDepth+1, returnCh, isClosed, visited)
 	}
 
-	if currentDepth == 0 {
-		returnCh <- MAX_VAL
-	}
+	return MAX_VAL
 }
 
 func main() {
@@ -99,53 +85,44 @@ func main() {
 
 	println("Finished json parse.")
 
-	i := 50_000
+	i := 0
 
 	f, _ := os.Create("cpu_profile.prof")
 	pprof.StartCPUProfile(f)
 	defer pprof.StopCPUProfile()
 
 	sem := semaphore.NewWeighted(16)
-	out := make([]int, 32)
+	answers := make([]uint32, 25_000)
 	ctx := context.TODO()
 
 	defer utils.Timer("0-50")()
-	for i < 100_000 {
-		for range out {
+	for range answers {
+		if err := sem.Acquire(ctx, 1); err != nil {
+			println("Couldn't acquire semaphore")
+			println(err)
+			break
+		}
 
-			if err := sem.Acquire(ctx, 1); err != nil {
-				println("Couldn't acquire semaphore")
-				println(err)
-				break
+		go func(i uint32) {
+			defer sem.Release(1)
+			visited := make(map[uint32]struct{})
+
+			node := findOutgoingLink(0, uint32(i), 0, visited)
+			answers[i] = node
+
+			if node != MAX_VAL {
+				// fmt.Printf("Found response %v -> %v \n", i, node)
+				// if !slices.Contains(outgoingLinks[node], uint32(i)) {
+				// 	fmt.Printf("node %v does not have an outgoing link to %v", node, i)
+				// }
+			} else {
+				fmt.Printf("Couldn't find response for %v \n", i)
 			}
+		}(uint32(i))
 
-			go func(i uint32) {
-				defer sem.Release(1)
-
-				visited := make(map[uint32]struct{})
-				cond := abool.New()
-				nodeCh := make(chan uint32)
-				go findOutgoingLink(0, uint32(i), 0, nodeCh, cond, visited)
-
-				node := <-nodeCh
-				cond.Set()
-
-				if node != MAX_VAL {
-					// fmt.Printf("Found response %v -> %v \n", i, node)
-					// if !slices.Contains(outgoingLinks[node], uint32(i)) {
-					// 	fmt.Printf("node %v does not have an outgoing link to %v", node, i)
-					// }
-				} else {
-					fmt.Printf("Couldn't find response for %v \n", i)
-				}
-			}(uint32(i))
-
-			i += 1
-			if i%1000 == 0 {
-				fmt.Printf("Progress: %v\n", i)
-			}
+		i += 1
+		if i%1000 == 0 {
+			fmt.Printf("Progress: %v\n", i)
 		}
 	}
-
-	// wg.Wait()
 }
