@@ -75,18 +75,15 @@ func main() {
 	outgoingLinks = file.UnmarshalMessage(bytes)
 
 	lengths = make([]int, len(outgoingLinks))
-
+	// Precomputing the lengths of the arrays
 	for i, val := range outgoingLinks {
 		leng := len(val)
 		lengths[i] = leng - 1
 	}
 
-	println(lengths)
-
 	println("Finished json parse.")
 
 	i := 0
-
 	f, _ := os.Create("cpu_profile.prof")
 	pprof.StartCPUProfile(f)
 	defer pprof.StopCPUProfile()
@@ -109,15 +106,6 @@ func main() {
 
 			node := findOutgoingLink(0, uint32(i), 0, visited)
 			answers[i] = node
-
-			if node != MAX_VAL {
-				// fmt.Printf("Found response %v -> %v \n", i, node)
-				// if !slices.Contains(outgoingLinks[node], uint32(i)) {
-				// 	fmt.Printf("node %v does not have an outgoing link to %v", node, i)
-				// }
-			} else {
-				fmt.Printf("Couldn't find response for %v \n", i)
-			}
 		}(uint32(i))
 
 		i += 1
